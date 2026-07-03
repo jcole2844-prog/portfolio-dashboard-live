@@ -1,0 +1,21 @@
+# Secrets — never commit these
+.streamlit/secrets.toml
+
+# Local helper / scratch scripts
+_*.py
+
+# Local data files (holdings live in Google Drive for the cloud app)
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Exclude the secrets template too (belt-and-suspenders)
+.streamlit/secrets.toml.example
