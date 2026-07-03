@@ -267,6 +267,61 @@ def write_sheet_df(tab: str, df: pd.DataFrame):
     ).execute()
 
 
+# ── Change log (audit trail of edits) ─────────────────────────────────────────
+
+LOG_TAB = "Change Log"
+_LOG_HEADER = ["Date", "Time", "Source", "Ticker", "Name",
+               "Qty Change", "Cost Basis Change"]
+
+
+def _ensure_log_tab(svc):
+    """Create the Change Log tab (with header) if it doesn't exist yet."""
+    meta = svc.spreadsheets().get(spreadsheetId=SHEET_ID).execute()
+    titles = [s["properties"]["title"] for s in meta.get("sheets", [])]
+    if LOG_TAB not in titles:
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=SHEET_ID,
+            body={"requests": [{"addSheet": {"properties": {"title": LOG_TAB}}}]},
+        ).execute()
+        svc.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID, range=f"'{LOG_TAB}'!A1",
+            valueInputOption="USER_ENTERED", body={"values": [_LOG_HEADER]},
+        ).execute()
+
+
+def append_change_log(entries: list):
+    """Append change-log rows. Each entry is a dict with keys:
+    date, time, source, ticker, name, qty_change, cost_change."""
+    if not entries:
+        return
+    svc = _sheets_service(write=True)
+    _ensure_log_tab(svc)
+    values = [[e["date"], e["time"], e["source"], e["ticker"], e["name"],
+               e["qty_change"], e["cost_change"]] for e in entries]
+    svc.spreadsheets().values().append(
+        spreadsheetId=SHEET_ID, range=f"'{LOG_TAB}'!A1",
+        valueInputOption="USER_ENTERED", insertDataOption="INSERT_ROWS",
+        body={"values": values},
+    ).execute()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def load_change_log() -> pd.DataFrame:
+    """Read the Change Log tab. Returns empty DataFrame if it doesn't exist."""
+    if not _sheet_enabled():
+        return pd.DataFrame(columns=_LOG_HEADER)
+    try:
+        df = _read_sheet_df(LOG_TAB)
+        if df.empty:
+            return pd.DataFrame(columns=_LOG_HEADER)
+        for c in ("Qty Change", "Cost Basis Change"):
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df
+    except Exception:
+        return pd.DataFrame(columns=_LOG_HEADER)
+
+
 def _parse_num(v):
     """Parse a possibly-text number ('10,000', '$1,234.50') to float."""
     if v is None:

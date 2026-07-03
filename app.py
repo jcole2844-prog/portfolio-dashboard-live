@@ -19,6 +19,8 @@ from data_feed import (
     write_sheet_df,
     _read_sheet_df,
     _sheet_enabled,
+    append_change_log,
+    load_change_log,
     get_quotes,
     get_premarket_quotes,
     get_ext_hours_prices,
@@ -102,6 +104,17 @@ h3 { margin-top: 0.4rem !important; margin-bottom: 0.2rem !important; }
     background-color: #0c8377 !important;
     border-color: #0c8377 !important;
 }
+
+/* Purple Change Log button */
+.st-key-changelog_btn button {
+    background-color: #7c5cff !important;
+    border-color: #7c5cff !important;
+    color: #ffffff !important;
+}
+.st-key-changelog_btn button:hover {
+    background-color: #6a4ae0 !important;
+    border-color: #6a4ae0 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,6 +124,38 @@ h3 { margin-top: 0.4rem !important; margin-bottom: 0.2rem !important; }
 
 def _na(v):
     return v is None or (isinstance(v, float) and np.isnan(v))
+
+def _now_ct():
+    """(date_str, time_str) in Central Time for change-log entries."""
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("America/Chicago"))
+    return now.strftime("%m/%d/%Y"), now.strftime("%I:%M:%S %p")
+
+def _num(v):
+    """Coerce to float, treating blank/None as 0."""
+    try:
+        f = float(v)
+        return 0.0 if pd.isna(f) else f
+    except (TypeError, ValueError):
+        return 0.0
+
+def diff_positions(old_map, new_map, source):
+    """Compare {key: (qty, cost, name)} dicts and return change-log entries for
+    any added / removed / changed positions. Rounds to avoid float noise."""
+    d, t = _now_ct()
+    entries = []
+    for key in sorted(set(old_map) | set(new_map)):
+        oq, oc, on = old_map.get(key, (0.0, 0.0, ""))
+        nq, nc, nn = new_map.get(key, (0.0, 0.0, on))
+        dq, dc = round(nq - oq, 4), round(nc - oc, 2)
+        if dq == 0 and dc == 0:
+            continue
+        entries.append({
+            "date": d, "time": t, "source": source,
+            "ticker": key, "name": nn or on,
+            "qty_change": dq, "cost_change": dc,
+        })
+    return entries
 
 # CNBC quote pages — every ticker becomes a clickable link.
 CNBC_QUOTE = "https://www.cnbc.com/quotes/{}"
@@ -397,9 +442,19 @@ if st.session_state.page == "holdings":
                 cost = pd.to_numeric(out["Total Cost Basis"], errors="coerce")
                 out["Avg Basis/Sh"] = (cost / qty).where(qty.ne(0))
                 out = out[["Ticker", "Name", "Total Quantity", "Total Cost Basis", "Avg Basis/Sh"]]
+                # Change log: compare pre-edit holdings to the new ones.
+                _old = load_portfolio()
+                old_map = {str(r["Ticker"]).upper(): (_num(r["Total Quantity"]),
+                           _num(r["Total Cost Basis"]), str(r.get("Name", "")))
+                           for _, r in _old.iterrows()}
+                new_map = {str(r["Ticker"]).upper(): (_num(r["Total Quantity"]),
+                           _num(r["Total Cost Basis"]), str(r.get("Name", "")))
+                           for _, r in out.iterrows()}
                 try:
                     write_sheet_df("Holdings", out)
+                    append_change_log(diff_positions(old_map, new_map, "Holdings"))
                     load_portfolio.clear()
+                    load_change_log.clear()
                     st.success("Holdings saved to Google Sheet ✓ — uncheck Edit to resume auto-refresh.")
                     st.rerun()
                 except Exception as e:
@@ -725,6 +780,17 @@ if st.session_state.page == "fixedincome":
                     d = pd.to_datetime(v)
                     return f"{d.month}/{d.day}/{d.year}"
 
+                # Change log: compare pre-edit fixed income (Quantity = principal;
+                # used for both Qty and Cost Basis change) before reformatting.
+                _fi_old = load_fixed_income()
+                old_map = {str(r["Symbol"]).upper(): (_num(r["Quantity"]),
+                           _num(r["Quantity"]), str(r.get("Description", "")))
+                           for _, r in _fi_old.iterrows()}
+                _clean = out[out["Symbol"].astype(str).str.strip() != ""]
+                new_map = {str(r["Symbol"]).upper(): (_num(r["Quantity"]),
+                           _num(r["Quantity"]), str(r.get("Description", "")))
+                           for _, r in _clean.iterrows()}
+
                 out["Coupon"] = out["Coupon"].map(_pct_str)
                 out["YTM"]    = out["YTM"].map(_pct_str)
                 out["Acquisition Date"] = out["Acquisition Date"].map(_date_str)
@@ -733,7 +799,9 @@ if st.session_state.page == "fixedincome":
                            "Acquisition Date", "Maturity Date", "Coupon", "YTM"]]
                 try:
                     write_sheet_df("Fixed Income", out)
+                    append_change_log(diff_positions(old_map, new_map, "Fixed Income"))
                     load_fixed_income.clear()
+                    load_change_log.clear()
                     st.success("Fixed income saved to Google Sheet ✓ — uncheck Edit to resume auto-refresh.")
                     st.rerun()
                 except Exception as e:
@@ -820,6 +888,59 @@ if st.session_state.page == "fixedincome":
         )
         st.altair_chart((bars + text).properties(height=380), use_container_width=True)
 
+    st.stop()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ██████  CHANGE LOG PAGE
+# ─────────────────────────────────────────────────────────────────────────────
+if st.session_state.page == "changelog":
+
+    col_back, col_title = st.columns([1, 9])
+    with col_back:
+        if st.button("← Dashboard"):
+            st.session_state.page = "main"
+            st.rerun()
+    with col_title:
+        st.title("📝 Change Log")
+
+    st.caption("Every edit you save to Holdings or Fixed Income is recorded here. "
+               "Qty changes: green = added, red = reduced.")
+
+    log = load_change_log()
+
+    def _render_log(df, source):
+        st.subheader(f"{source} Change Log")
+        sub = df[df.get("Source", "") == source].copy() if not df.empty else df
+        if sub is None or sub.empty:
+            st.info(f"No {source.lower()} changes recorded yet.")
+            return
+        # Newest first (rows are appended chronologically).
+        sub = sub.iloc[::-1].reset_index(drop=True)
+        cols = ["Ticker", "Name", "Qty Change", "Cost Basis Change", "Date", "Time"]
+        sub = sub[[c for c in cols if c in sub.columns]]
+        sub["Qty Change"] = pd.to_numeric(sub["Qty Change"], errors="coerce")
+        sub["Cost Basis Change"] = pd.to_numeric(sub["Cost Basis Change"], errors="coerce")
+
+        def _sign_color(v):
+            if pd.isna(v):
+                return ""
+            return "color: #00d488" if v >= 0 else "color: #ff4b4b"
+
+        styled = sub.style.map(_sign_color, subset=["Qty Change"])
+        st.dataframe(
+            styled,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "Qty Change":        st.column_config.NumberColumn(format="%+,.2f"),
+                "Cost Basis Change": st.column_config.NumberColumn(format="%+,.2f"),
+            },
+        )
+
+    _render_log(log, "Holdings")
+    st.markdown("---")
+    _render_log(log, "Fixed Income")
     st.stop()
 
 
@@ -1001,7 +1122,7 @@ for col, idx in zip(idx_cols, indices):
 st.markdown("---")
 
 # ── Holdings, Watchlist & Fixed Income navigation cards
-nav_1, nav_2, nav_3 = st.columns(3)
+nav_1, nav_2, nav_3, nav_4 = st.columns(4)
 with nav_1:
     if st.button("📋  View Holdings", type="primary",
                  width="stretch", key="holdings_btn"):
@@ -1016,6 +1137,11 @@ with nav_3:
     if st.button("🏦  Fixed Income", type="primary",
                  width="stretch", key="fixedincome_btn"):
         st.session_state.page = "fixedincome"
+        st.rerun()
+with nav_4:
+    if st.button("📝  Change Log", type="primary",
+                 width="stretch", key="changelog_btn"):
+        st.session_state.page = "changelog"
         st.rerun()
 
 st.markdown("---")
