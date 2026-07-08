@@ -1039,10 +1039,15 @@ total_value = 0.0
 prev_value  = 0.0
 port_rows   = []
 
+missing_cost = []
 for _, row in portfolio.iterrows():
     t        = str(row.iloc[0]).strip().upper()
-    qty      = float(row.iloc[2]) if len(row) > 2 else 0
-    tot_cost = float(row.iloc[3]) if len(row) > 3 else 0
+    qty      = float(row.iloc[2]) if (len(row) > 2 and pd.notna(row.iloc[2])) else 0
+    if len(row) > 3 and pd.notna(row.iloc[3]):
+        tot_cost = float(row.iloc[3])
+    else:
+        tot_cost = 0                      # blank cost basis → 0, don't blank totals
+        missing_cost.append(t)
     q        = quotes.get(t, {})
     cur      = q.get("current")
     prev     = q.get("prev_close")
@@ -1074,6 +1079,13 @@ total_unr_pct      = total_unr / total_cost * 100 if total_cost else 0
 # SECTION 1 — Portfolio Summary Metrics
 # ─────────────────────────────────────────────────────────────────────────────
 st.subheader("Portfolio Summary")
+
+if missing_cost:
+    st.warning(
+        "⚠️ Missing cost basis for: **" + ", ".join(missing_cost) + "** — "
+        "Total Cost and Unrealized Gain exclude these. Add their cost basis in "
+        "View Holdings → Edit (or the Google Sheet) to include them."
+    )
 
 # Fixed-income principal (face value, excluding accrued interest)
 fixed_inc_total = float(load_fixed_income()["Quantity"].sum())
