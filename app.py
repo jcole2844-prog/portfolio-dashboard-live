@@ -230,6 +230,12 @@ def upcoming_earnings(tickers, business_days=10):
     items.sort(key=lambda x: x["date"])
     return items
 
+def _label_fg(hexbg):
+    """Pick readable label text color (dark on light bg, white on dark bg)."""
+    h = hexbg.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return "#0b0b14" if (0.299 * r + 0.587 * g + 0.114 * b) > 150 else "#ffffff"
+
 def earnings_banner(label, items, label_bg="#1f9bff"):
     """Scrolling marquee banner of upcoming earnings (Ticker + date)."""
     if items:
@@ -241,7 +247,7 @@ def earnings_banner(label, items, label_bg="#1f9bff"):
         content = '<span style="color:#888;">no earnings in the next 10 business days</span>'
     st.markdown(
         f'<div class="ticker-bar">'
-        f'<div class="ticker-label" style="background:{label_bg};">{label}</div>'
+        f'<div class="ticker-label" style="background:{label_bg};color:{_label_fg(label_bg)};">{label}</div>'
         f'<div class="ticker-track"><span class="ticker-move">{content}</span></div>'
         f'</div>',
         unsafe_allow_html=True,
@@ -258,7 +264,7 @@ def ticker_banner(label, items, label_bg="#ff4b4b"):
         content = '<span style="color:#888;">none within 10% of the 52-week low</span>'
     st.markdown(
         f'<div class="ticker-bar">'
-        f'<div class="ticker-label" style="background:{label_bg};">{label}</div>'
+        f'<div class="ticker-label" style="background:{label_bg};color:{_label_fg(label_bg)};">{label}</div>'
         f'<div class="ticker-track"><span class="ticker-move">{content}</span></div>'
         f'</div>',
         unsafe_allow_html=True,
@@ -1242,13 +1248,13 @@ st.markdown("---")
 
 # ── Scrolling banners: earnings + names near their 52-week high / low ─────────
 earnings_banner("📅 UPCOMING EARNINGS",
-                upcoming_earnings(port_tickers, business_days=10), label_bg="#1f9bff")
+                upcoming_earnings(port_tickers, business_days=10), label_bg="#c8a2e8")
 ticker_banner("🔺 HOLDINGS NEAR 52W HIGH",
               near_52w_high(port_tickers, threshold=10.0), label_bg="#00d488")
 ticker_banner("🔻 HOLDINGS NEAR 52W LOW",
               near_52w_low(port_tickers, threshold=10.0), label_bg="#ff4b4b")
 ticker_banner("🔻 WATCHLIST NEAR 52W LOW",
-              near_52w_low(get_watchlist(), threshold=10.0), label_bg="#ff8c1a")
+              near_52w_low(get_watchlist(), threshold=10.0), label_bg="#1f6feb")
 
 st.markdown("---")
 
