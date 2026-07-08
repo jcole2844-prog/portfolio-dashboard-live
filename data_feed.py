@@ -736,6 +736,24 @@ def get_fundamentals(tickers: tuple) -> dict:
     return {t: (v if v is not None else {}) for t, v in raw.items()}
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_earnings_dates(tickers: tuple) -> dict:
+    """Next scheduled earnings date per ticker (or None). Cached 1 hour."""
+    def _one(t):
+        try:
+            cal = yf.Ticker(t).calendar
+            ed = cal.get("Earnings Date") if isinstance(cal, dict) else None
+            if ed:
+                dates = [d for d in ed if d is not None]
+                if dates:
+                    return min(dates)
+        except Exception:
+            return None
+        return None
+
+    return _parallel_map(_one, tickers)
+
+
 # ── Analyst data ─────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=300, show_spinner=False)

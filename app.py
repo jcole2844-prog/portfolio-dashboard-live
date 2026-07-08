@@ -33,6 +33,7 @@ from data_feed import (
     get_sp500_tickers,
     get_index_quotes,
     get_market_extras,
+    get_earnings_dates,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,6 +213,39 @@ def near_52w_high(tickers, threshold=10.0):
                 out.append({"ticker": t, "price": price, "pct": pct_below})
     out.sort(key=lambda x: x["pct"])
     return out
+
+def upcoming_earnings(tickers, business_days=10):
+    """[{ticker, date}] for tickers with earnings from today through
+    `business_days` business days ahead (inclusive). Soonest first."""
+    from datetime import timedelta
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    end, added = today, 0
+    while added < business_days:
+        end += timedelta(days=1)
+        if end.weekday() < 5:
+            added += 1
+    ed = get_earnings_dates(tuple(tickers))
+    items = [{"ticker": t, "date": d} for t, d in ed.items()
+             if d is not None and today <= d <= end]
+    items.sort(key=lambda x: x["date"])
+    return items
+
+def earnings_banner(label, items, label_bg="#1f9bff"):
+    """Scrolling marquee banner of upcoming earnings (Ticker + date)."""
+    if items:
+        parts = [f'<span style="color:#fff;">{it["ticker"]}</span> '
+                 f'<span style="color:#9fd0ff;">{it["date"].strftime("%m/%d")}</span>'
+                 for it in items]
+        content = ' &nbsp;&nbsp;•&nbsp;&nbsp; '.join(parts)
+    else:
+        content = '<span style="color:#888;">no earnings in the next 10 business days</span>'
+    st.markdown(
+        f'<div class="ticker-bar">'
+        f'<div class="ticker-label" style="background:{label_bg};">{label}</div>'
+        f'<div class="ticker-track"><span class="ticker-move">{content}</span></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 def ticker_banner(label, items, label_bg="#ff4b4b"):
     """Render a scrolling marquee banner (Ticker + price only)."""
@@ -1206,7 +1240,9 @@ for col, idx in zip(idx_cols, indices):
 
 st.markdown("---")
 
-# ── Scrolling banners: names near their 52-week high / low ────────────────────
+# ── Scrolling banners: earnings + names near their 52-week high / low ─────────
+earnings_banner("📅 UPCOMING EARNINGS",
+                upcoming_earnings(port_tickers, business_days=10), label_bg="#1f9bff")
 ticker_banner("🔺 HOLDINGS NEAR 52W HIGH",
               near_52w_high(port_tickers, threshold=10.0), label_bg="#00d488")
 ticker_banner("🔻 HOLDINGS NEAR 52W LOW",
