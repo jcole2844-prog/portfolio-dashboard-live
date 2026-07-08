@@ -192,6 +192,27 @@ def near_52w_low(tickers, threshold=10.0):
     out.sort(key=lambda x: x["pct"])
     return out
 
+def near_52w_high(tickers, threshold=10.0):
+    """Return [{ticker, price, pct}] for tickers whose price is within
+    `threshold`% below their 52-week high. Price = extended-hours price when the
+    market is in pre/post-market, otherwise the current/last price. Closest to
+    the high first."""
+    q = get_quotes(tuple(tickers))
+    f = get_fundamentals(tuple(tickers))
+    ext = get_ext_hours_prices(tuple(tickers))
+    out = []
+    for t in tickers:
+        cur = q.get(t, {}).get("current")
+        ev  = ext.get(t)
+        price = ev if ev is not None else cur
+        hi  = f.get(t, {}).get("high_52w")
+        if price and hi and hi > 0:
+            pct_below = (hi - price) / hi * 100
+            if 0 <= pct_below <= threshold:
+                out.append({"ticker": t, "price": price, "pct": pct_below})
+    out.sort(key=lambda x: x["pct"])
+    return out
+
 def ticker_banner(label, items, label_bg="#ff4b4b"):
     """Render a scrolling marquee banner (Ticker + price only)."""
     if items:
@@ -1185,7 +1206,9 @@ for col, idx in zip(idx_cols, indices):
 
 st.markdown("---")
 
-# ── Scrolling banners: names within 10% of their 52-week low ──────────────────
+# ── Scrolling banners: names near their 52-week high / low ────────────────────
+ticker_banner("🔺 HOLDINGS NEAR 52W HIGH",
+              near_52w_high(port_tickers, threshold=10.0), label_bg="#00d488")
 ticker_banner("🔻 HOLDINGS NEAR 52W LOW",
               near_52w_low(port_tickers, threshold=10.0), label_bg="#ff4b4b")
 ticker_banner("🔻 WATCHLIST NEAR 52W LOW",
