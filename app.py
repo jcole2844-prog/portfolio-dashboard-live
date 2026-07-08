@@ -73,6 +73,20 @@ st.markdown("""
 [data-testid="stMetricValue"] { font-size: 1.1rem; }
 [data-testid="stMetricLabel"] { font-size: 0.75rem; color: #aaa; }
 
+/* Scrolling ticker banners */
+.ticker-bar { display:flex; align-items:center; background:#1a1a2e;
+    border:1px solid #2d2d4e; border-radius:8px; overflow:hidden;
+    margin-bottom:6px; }
+.ticker-label { flex:0 0 auto; padding:6px 12px; font-size:0.72rem;
+    font-weight:700; letter-spacing:0.5px; color:#0b0b14; white-space:nowrap; }
+.ticker-track { flex:1 1 auto; overflow:hidden; }
+.ticker-move { display:inline-block; white-space:nowrap; padding-left:100%;
+    animation: ticker-scroll 40s linear infinite; font-size:0.9rem;
+    font-weight:600; }
+.ticker-move:hover { animation-play-state: paused; }
+@keyframes ticker-scroll { 0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); } }
+
 /* Flag columns */
 .flag-red  { color: #ff4b4b; font-weight: bold; font-size: 1.1rem; }
 .flag-green { color: #00d488; font-weight: bold; font-size: 1.1rem; }
@@ -156,6 +170,44 @@ def diff_positions(old_map, new_map, source):
             "qty_change": dq, "cost_change": dc,
         })
     return entries
+
+def near_52w_low(tickers, threshold=10.0):
+    """Return [{ticker, price, pct}] for tickers whose price is within
+    `threshold`% above their 52-week low. Price = extended-hours price when the
+    market is in pre/post-market, otherwise the current/last price. Closest to
+    the low first."""
+    q = get_quotes(tuple(tickers))
+    f = get_fundamentals(tuple(tickers))
+    ext = get_ext_hours_prices(tuple(tickers))
+    out = []
+    for t in tickers:
+        cur = q.get(t, {}).get("current")
+        ev  = ext.get(t)
+        price = ev if ev is not None else cur   # ext-hours price when available
+        lo  = f.get(t, {}).get("low_52w")
+        if price and lo and lo > 0:
+            pct = (price - lo) / lo * 100
+            if 0 <= pct <= threshold:
+                out.append({"ticker": t, "price": price, "pct": pct})
+    out.sort(key=lambda x: x["pct"])
+    return out
+
+def ticker_banner(label, items, label_bg="#ff4b4b"):
+    """Render a scrolling marquee banner (Ticker + price only)."""
+    if items:
+        parts = [f'<span style="color:#fff;">{it["ticker"]}</span> '
+                 f'<span style="color:#ffd166;">{it["price"]:,.2f}</span>'
+                 for it in items]
+        content = ' &nbsp;&nbsp;•&nbsp;&nbsp; '.join(parts)
+    else:
+        content = '<span style="color:#888;">none within 10% of the 52-week low</span>'
+    st.markdown(
+        f'<div class="ticker-bar">'
+        f'<div class="ticker-label" style="background:{label_bg};">{label}</div>'
+        f'<div class="ticker-track"><span class="ticker-move">{content}</span></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 # CNBC quote pages — every ticker becomes a clickable link.
 CNBC_QUOTE = "https://www.cnbc.com/quotes/{}"
@@ -1130,6 +1182,14 @@ for col, idx in zip(idx_cols, indices):
                  {arrow} {fn(abs(chg))} ({fp(pct)})</div></div></a>""",
         unsafe_allow_html=True,
     )
+
+st.markdown("---")
+
+# ── Scrolling banners: names within 10% of their 52-week low ──────────────────
+ticker_banner("🔻 HOLDINGS NEAR 52W LOW",
+              near_52w_low(port_tickers, threshold=10.0), label_bg="#ff4b4b")
+ticker_banner("🔻 WATCHLIST NEAR 52W LOW",
+              near_52w_low(get_watchlist(), threshold=10.0), label_bg="#ff8c1a")
 
 st.markdown("---")
 
