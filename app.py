@@ -778,7 +778,10 @@ if st.session_state.page == "watchlist":
             "Ext. Hrs Chg $": wl_ext_chg,
             "Sector":      f.get("sector") or "",
             "Size":        cap_size(f.get("market_cap")),
+            "Prev Close":  q.get("prev_close"),
             "Cur Price":   q.get("current"),
+            "Chg $":       q.get("day_change"),
+            "Chg %":       q.get("day_change_pct"),
             "% from 52W High": pct_from_high,
             "% from 52W Low":  pct_from_low,
             "P/E":         f.get("pe"),
@@ -797,9 +800,9 @@ if st.session_state.page == "watchlist":
     wl_df = pd.DataFrame(wl_rows)
 
     _wl_numeric = [
-        "Ext. Hrs Price", "Ext. Hrs Chg $", "Cur Price",
-        "% from 52W High", "% from 52W Low", "P/E", "Fwd P/E", "Div %",
-        "Day High", "Day Low", "52W High", "52W Low",
+        "Ext. Hrs Price", "Ext. Hrs Chg $", "Prev Close", "Cur Price",
+        "Chg $", "Chg %", "% from 52W High", "% from 52W Low",
+        "P/E", "Fwd P/E", "Div %", "Day High", "Day Low", "52W High", "52W Low",
     ]
     for _c in _wl_numeric:
         wl_df[_c] = pd.to_numeric(wl_df[_c], errors="coerce")
@@ -807,7 +810,10 @@ if st.session_state.page == "watchlist":
     wl_config = {
         "Ext. Hrs Price": st.column_config.NumberColumn(format="%,.2f"),
         "Ext. Hrs Chg $": st.column_config.NumberColumn(format="%,.2f"),
+        "Prev Close": st.column_config.NumberColumn(format="%,.2f"),
         "Cur Price": st.column_config.NumberColumn(format="%,.2f"),
+        "Chg $": st.column_config.NumberColumn(format="%+,.2f"),
+        "Chg %": st.column_config.NumberColumn(format="%+.2f%%"),
         "% from 52W High": st.column_config.NumberColumn(format="%+.2f%%"),
         "% from 52W Low":  st.column_config.NumberColumn(format="%+.2f%%"),
         "P/E":       st.column_config.NumberColumn(format="%.1f"),
@@ -828,7 +834,8 @@ if st.session_state.page == "watchlist":
             return ""
         return "color: #00d488" if v >= 0 else "color: #ff4b4b"
 
-    wl_styled = wl_df.style.map(_wl_sign_color, subset=["Ext. Hrs Chg $"])
+    wl_styled = wl_df.style.map(_wl_sign_color,
+                                subset=["Ext. Hrs Chg $", "Chg $", "Chg %"])
 
     st.dataframe(
         wl_styled,
