@@ -676,8 +676,11 @@ if st.session_state.page == "holdings":
     }
 
     # Link tickers to CNBC and color the gain/loss columns by sign.
+    # Ticker + Name are pinned (frozen) so they stay visible when scrolling right.
     detail_df["Ticker"] = detail_df["Ticker"].map(cnbc)
-    detail_config["Ticker"] = ticker_link_col()
+    detail_config["Ticker"] = st.column_config.LinkColumn(
+        "Ticker", display_text=r"quotes/([^/]+)$", pinned=True)
+    detail_config["Name"] = st.column_config.TextColumn("Name", pinned=True)
 
     def _sign_color(v):
         if pd.isna(v):
