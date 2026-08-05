@@ -54,7 +54,7 @@ if "page" not in st.session_state:
 # an "Edit mode" panel is open, so an in-progress edit can't be interrupted.
 _editing = any(
     st.session_state.get(k, False)
-    for k in ("hold_edit_mode", "wl_edit_mode", "fi_edit_mode")
+    for k in ("hold_edit_mode", "wl_edit_mode", "fi_edit_mode", "tx_mode")
 )
 if not _editing:
     st_autorefresh(interval=60_000, key="autorefresh")
@@ -573,6 +573,93 @@ if st.session_state.page == "holdings":
                 except Exception as e:
                     st.error(f"Save failed: {e}")
 
+    # ── Record a Buy/Sell transaction (auto-updates shares & cost basis) ──
+    if _sheet_enabled():
+        if st.checkbox("➕  Record a buy/sell transaction "
+                       "(auto-updates shares & cost basis; pauses auto-refresh)",
+                       key="tx_mode"):
+            hdf = load_portfolio().copy()
+            hdf["Ticker"] = hdf["Ticker"].astype(str).str.strip().str.upper()
+
+            with st.form("tx_form", clear_on_submit=True):
+                c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                tx_ticker = c1.text_input("Ticker").strip().upper()
+                tx_action = c2.selectbox("Action", ["Buy", "Sell"])
+                tx_shares = c3.number_input("Shares", min_value=0.0, step=1.0, format="%.4f")
+                tx_price  = c4.number_input("Price / share", min_value=0.0, step=0.01, format="%.2f")
+                submitted = st.form_submit_button("Record transaction", type="primary")
+
+            if submitted:
+                mask = hdf["Ticker"] == tx_ticker
+                if not tx_ticker or tx_shares <= 0:
+                    st.error("Enter a ticker and a share quantity greater than 0.")
+                elif tx_action == "Sell" and not mask.any():
+                    st.error(f"You don't hold {tx_ticker}, so it can't be sold.")
+                else:
+                    if mask.any():
+                        r = hdf[mask].iloc[0]
+                        old_qty, old_cost = _num(r["Total Quantity"]), _num(r["Total Cost Basis"])
+                        name = str(r.get("Name", "")).strip()
+                    else:
+                        old_qty, old_cost, name = 0.0, 0.0, ""
+                    avg = (old_cost / old_qty) if old_qty else 0.0
+
+                    if tx_action == "Sell" and tx_shares > old_qty + 1e-9:
+                        st.error(f"Cannot sell {tx_shares:g} — you only hold {old_qty:g} {tx_ticker}.")
+                    else:
+                        if tx_action == "Buy":
+                            new_qty  = old_qty + tx_shares
+                            new_cost = old_cost + tx_shares * tx_price
+                            realized = None
+                        else:  # Sell — average-cost method (sell price = realized G/L only)
+                            new_qty  = old_qty - tx_shares
+                            new_cost = new_qty * avg
+                            realized = tx_shares * (tx_price - avg)
+
+                        if not name:
+                            name = (get_fundamentals((tx_ticker,)).get(tx_ticker, {})
+                                    .get("name", tx_ticker) or tx_ticker)
+
+                        if new_qty <= 1e-9:                    # position closed
+                            hdf = hdf[~mask]
+                        elif mask.any():
+                            hdf.loc[mask, "Total Quantity"]   = new_qty
+                            hdf.loc[mask, "Total Cost Basis"] = new_cost
+                            hdf.loc[mask, "Avg Basis/Sh"]     = new_cost / new_qty
+                            if not str(hdf.loc[mask, "Name"].iloc[0]).strip():
+                                hdf.loc[mask, "Name"] = name
+                        else:                                  # brand-new holding
+                            hdf = pd.concat([hdf, pd.DataFrame([{
+                                "Ticker": tx_ticker, "Name": name,
+                                "Total Quantity": new_qty, "Total Cost Basis": new_cost,
+                                "Avg Basis/Sh": new_cost / new_qty,
+                            }])], ignore_index=True)
+
+                        out = hdf[["Ticker", "Name", "Total Quantity",
+                                   "Total Cost Basis", "Avg Basis/Sh"]]
+                        _d, _t = _now_ct()
+                        entry = [{"date": _d, "time": _t, "source": "Holdings",
+                                  "ticker": tx_ticker, "name": name,
+                                  "qty_change": tx_shares if tx_action == "Buy" else -tx_shares,
+                                  "cost_change": round(new_cost - old_cost, 2)}]
+                        try:
+                            write_sheet_df("Holdings", out)
+                            append_change_log(entry)
+                            load_portfolio.clear()
+                            load_change_log.clear()
+                            msg = (f"✓ {tx_action} {tx_shares:g} {tx_ticker} @ "
+                                   f"{tx_price:,.2f} — new position: {new_qty:g} shares, "
+                                   f"cost {new_cost:,.2f}"
+                                   + (f", avg {new_cost/new_qty:,.2f}." if new_qty else " (closed).")
+                                   )
+                            if realized is not None:
+                                msg += (f"  Realized "
+                                        f"{'gain' if realized >= 0 else 'loss'}: {realized:,.2f}.")
+                            st.success(msg)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Save failed: {e}")
+
     portfolio = load_portfolio()
     tickers = tuple(portfolio.iloc[:, 0].tolist())
 
@@ -829,8 +916,11 @@ if st.session_state.page == "watchlist":
     }
 
     # Link tickers to CNBC and color the extended-hours change by sign.
+    # Ticker + Name are pinned (frozen) so they stay visible when scrolling right.
     wl_df["Ticker"] = wl_df["Ticker"].map(cnbc)
-    wl_config["Ticker"] = ticker_link_col()
+    wl_config["Ticker"] = st.column_config.LinkColumn(
+        "Ticker", display_text=r"quotes/([^/]+)$", pinned=True)
+    wl_config["Name"] = st.column_config.TextColumn("Name", pinned=True)
 
     def _wl_sign_color(v):
         if pd.isna(v):
@@ -966,6 +1056,8 @@ if st.session_state.page == "fixedincome":
     fi_display["YTM"]    = fi_display["YTM"] * 100
 
     fi_config = {
+        "Symbol":           st.column_config.TextColumn("Symbol", pinned=True),
+        "Description":      st.column_config.TextColumn("Description", pinned=True),
         "Quantity":         st.column_config.NumberColumn("Quantity", format="%,.2f"),
         "Coupon":           st.column_config.NumberColumn("Coupon",   format="%.3f%%"),
         "YTM":              st.column_config.NumberColumn("YTM",      format="%.3f%%"),
