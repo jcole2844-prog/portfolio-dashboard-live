@@ -1305,13 +1305,14 @@ if missing_cost:
 # Fixed-income principal (face value, excluding accrued interest)
 fixed_inc_total = float(load_fixed_income()["Quantity"].sum())
 
-mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
-mc1.metric("Holdings",      len(port_tickers))
-mc2.metric("Total Value",   fc(total_value))
-mc3.metric("Total Cost",    fc(total_cost))
-mc4.metric("Unr Gain $",    fc(total_unr),  delta=fp(total_unr_pct))
-mc5.metric("Today Gain $",  fc(total_day_gain), delta=fp(total_day_gain_pct))
-mc6.metric("Fixed Inc",     fc(fixed_inc_total))
+mc1, mc2, mc3, mc4, mc5, mc6, _mc_sp, mc7 = st.columns([1, 1, 1, 1, 1, 1, 1.4, 1.3])
+mc1.metric("Holdings",       len(port_tickers))
+mc2.metric("Equities Value", fc(total_value))
+mc3.metric("Cost Basis",     fc(total_cost))
+mc4.metric("Unr Gain $",     fc(total_unr),  delta=fp(total_unr_pct))
+mc5.metric("Today Gain $",   fc(total_day_gain), delta=fp(total_day_gain_pct))
+mc6.metric("Fixed Inc",      fc(fixed_inc_total))
+mc7.metric("Total Value",    fc(total_value + fixed_inc_total))
 
 # ── Index performance bar (Dow / S&P 500 / Nasdaq), green up / red down ────────
 indices = get_index_quotes()
