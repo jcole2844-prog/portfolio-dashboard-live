@@ -610,7 +610,7 @@ if st.session_state.page == "holdings":
 
     st.markdown(
         '<a href="https://www.cnbc.com/markets/sectors/" target="_blank" '
-        'style="color:#1f9bff;text-decoration:none;font-weight:700;font-size:1.05rem;">'
+        'style="color:#2563eb;text-decoration:none;font-weight:700;font-size:1.05rem;">'
         '📊 Sectors (CNBC) ↗</a>',
         unsafe_allow_html=True,
     )
@@ -845,6 +845,19 @@ if st.session_state.page == "holdings":
         "52W High":   st.column_config.NumberColumn(format="%,.2f"),
         "52W Low":    st.column_config.NumberColumn(format="%,.2f"),
     }
+
+    # ── Summary KPI tiles (match the main dashboard look) ──
+    _mv  = float(pd.to_numeric(detail_df["Cur Value"], errors="coerce").sum())
+    _unr = float(pd.to_numeric(detail_df["Unr Gain $"], errors="coerce").sum())
+    _day = float(pd.to_numeric(detail_df["Day Gain $"], errors="coerce").sum())
+    _unr_pct = (_unr / (_mv - _unr) * 100) if (_mv - _unr) else 0
+    _day_pct = (_day / (_mv - _day) * 100) if (_mv - _day) else 0
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Holdings", len(detail_df))
+    k2.metric("Market Value", fc(_mv))
+    k3.metric("Unrealized Gain", fc(_unr), delta=fp(_unr_pct))
+    k4.metric("Today's Gain", fc(_day), delta=fp(_day_pct))
+    st.markdown("")
 
     # Link tickers to CNBC and color the gain/loss columns by sign.
     # Ticker + Name are pinned (frozen) so they stay visible when scrolling right.
