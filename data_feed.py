@@ -358,6 +358,67 @@ def _parse_rate(v):
         return None
 
 
+# ── Simple key/value settings (e.g. manual Cash balance) ──────────────────────
+
+SETTINGS_TAB = "Settings"
+_SETTINGS_HEADER = ["Key", "Value"]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def load_settings() -> dict:
+    """Read the Settings tab as a {Key: Value} dict. Empty if not configured."""
+    if not _sheet_enabled():
+        return {}
+    try:
+        df = _read_sheet_df(SETTINGS_TAB)
+        if df.empty or "Key" not in df.columns:
+            return {}
+        vals = df["Value"] if "Value" in df.columns else [None] * len(df)
+        return {str(k).strip(): v for k, v in zip(df["Key"], vals) if str(k).strip()}
+    except Exception:
+        return {}
+
+
+def save_setting(key: str, value):
+    """Create/update a Key/Value row in the Settings tab (creates tab if needed)."""
+    svc = _sheets_service(write=True)
+    meta = svc.spreadsheets().get(spreadsheetId=SHEET_ID).execute()
+    titles = [s["properties"]["title"] for s in meta.get("sheets", [])]
+    if SETTINGS_TAB not in titles:
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=SHEET_ID,
+            body={"requests": [{"addSheet": {"properties": {"title": SETTINGS_TAB}}}]},
+        ).execute()
+        svc.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID, range=f"'{SETTINGS_TAB}'!A1",
+            valueInputOption="USER_ENTERED", body={"values": [_SETTINGS_HEADER]},
+        ).execute()
+
+    settings = {}
+    try:
+        cur = _read_sheet_df(SETTINGS_TAB)
+        if not cur.empty and "Key" in cur.columns:
+            vals = cur["Value"] if "Value" in cur.columns else [None] * len(cur)
+            for k, v in zip(cur["Key"], vals):
+                if str(k).strip():
+                    settings[str(k).strip()] = v
+    except Exception:
+        pass
+    settings[str(key)] = value
+
+    rows = [_SETTINGS_HEADER] + [[k, settings[k]] for k in settings]
+    svc.spreadsheets().values().clear(
+        spreadsheetId=SHEET_ID, range=f"'{SETTINGS_TAB}'").execute()
+    svc.spreadsheets().values().update(
+        spreadsheetId=SHEET_ID, range=f"'{SETTINGS_TAB}'!A1",
+        valueInputOption="USER_ENTERED", body={"values": rows}).execute()
+
+
+def get_cash() -> float:
+    """Manually-entered cash balance (0 if unset)."""
+    return _parse_num(load_settings().get("Cash")) or 0.0
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def load_portfolio():
     """Load portfolio holdings. Source order: Google Sheet → Drive/local Excel.

@@ -21,6 +21,9 @@ from data_feed import (
     _sheet_enabled,
     append_change_log,
     load_change_log,
+    get_cash,
+    save_setting,
+    load_settings,
     get_quotes,
     get_premarket_quotes,
     get_ext_hours_prices,
@@ -54,7 +57,7 @@ if "page" not in st.session_state:
 # an "Edit mode" panel is open, so an in-progress edit can't be interrupted.
 _editing = any(
     st.session_state.get(k, False)
-    for k in ("hold_edit_mode", "wl_edit_mode", "fi_edit_mode", "tx_mode")
+    for k in ("hold_edit_mode", "wl_edit_mode", "fi_edit_mode", "tx_mode", "cash_mode")
 )
 if not _editing:
     st_autorefresh(interval=60_000, key="autorefresh")
@@ -1037,6 +1040,25 @@ if st.session_state.page == "fixedincome":
     m2.metric("Total Principal", fc(total_principal))
     m3.metric("Total Interest Earned", fc(total_annual))
 
+    # ── Cash balance (manual; shown on the main dashboard, not in FI total) ──
+    if _sheet_enabled():
+        _cash_now = get_cash()
+        st.caption(f"💵 Cash balance (manual): **{fc(_cash_now)}** — "
+                   "shown on the main dashboard between Fixed Inc and Total Value.")
+        if st.checkbox("✏️  Edit cash balance (pauses auto-refresh)", key="cash_mode"):
+            with st.form("cash_form", clear_on_submit=False):
+                new_cash = st.number_input("Cash balance ($)", min_value=0.0,
+                                           value=float(_cash_now), step=100.0, format="%.2f")
+                if st.form_submit_button("Save cash balance", type="primary"):
+                    try:
+                        save_setting("Cash", new_cash)
+                        load_settings.clear()
+                        st.success(f"Cash balance saved: {fc(new_cash)} ✓ — "
+                                   "uncheck Edit to resume auto-refresh.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Save failed: {e}")
+
     st.markdown("---")
 
     # ── Detail table (Excel columns + Annual Interest) ──
@@ -1297,14 +1319,17 @@ if missing_cost:
 # Fixed-income principal (face value, excluding accrued interest)
 fixed_inc_total = float(load_fixed_income()["Quantity"].sum())
 
-mc1, mc2, mc3, mc4, mc5, mc6, _mc_sp, mc7 = st.columns([1, 1, 1, 1, 1, 1, 1.4, 1.3])
+cash_total = get_cash()
+mc1, mc2, mc3, mc4, mc5, mc6, mc7, _mc_sp, mc8 = st.columns(
+    [1, 1, 1, 1, 1, 1, 1, 0.8, 1.3])
 mc1.metric("Holdings",       len(port_tickers))
 mc2.metric("Equities Value", fc(total_value))
 mc3.metric("Cost Basis",     fc(total_cost))
 mc4.metric("Unr Gain $",     fc(total_unr),  delta=fp(total_unr_pct))
 mc5.metric("Today Gain $",   fc(total_day_gain), delta=fp(total_day_gain_pct))
 mc6.metric("Fixed Inc",      fc(fixed_inc_total))
-mc7.metric("Total Value",    fc(total_value + fixed_inc_total))
+mc7.metric("Cash",           fc(cash_total))
+mc8.metric("Total Value",    fc(total_value + fixed_inc_total + cash_total))
 
 # ── Index performance bar (Dow / S&P 500 / Nasdaq), green up / red down ────────
 indices = get_index_quotes()
