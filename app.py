@@ -1209,7 +1209,7 @@ if st.session_state.page == "fixedincome":
         text = base.mark_text(dy=-8, color="#0f1b2d", fontWeight="bold").encode(
             text=alt.Text("AmtLabel:N")
         )
-        st.altair_chart((bars + text).properties(height=380), use_container_width=True)
+        st.altair_chart((bars + text).properties(height=380), width='stretch')
 
     st.stop()
 
@@ -1434,11 +1434,11 @@ with hero_l:
 with hero_m:
     with st.container(border=True):
         st.plotly_chart(allocation_donut(total_value, fixed_inc_total, cash_total),
-                        use_container_width=True, config={"displayModeBar": False})
+                        width='stretch', config={"displayModeBar": False})
 with hero_r:
     with st.container(border=True):
         st.plotly_chart(return_gauge(total_unr_pct),
-                        use_container_width=True, config={"displayModeBar": False})
+                        width='stretch', config={"displayModeBar": False})
         st.markdown(
             f'<div class="wheel-cap">Unrealized gain · <b>{fc(total_unr)}</b></div>',
             unsafe_allow_html=True,
