@@ -1026,28 +1026,20 @@ if st.session_state.page == "fixedincome":
     fi["Acquisition Date"] = pd.to_datetime(fi["Acquisition Date"])
     fi["Maturity Date"]    = pd.to_datetime(fi["Maturity Date"])
 
-    # Estimate accrued interest: face value × coupon × (days held / 365),
-    # accrued from acquisition up to today (capped at maturity).
-    def _accrued(row):
-        acq = row["Acquisition Date"]
-        mat = row["Maturity Date"]
-        end = min(today, mat)
-        days = max((end - acq).days, 0)
-        return row["Quantity"] * row["Coupon"] * days / 365.0
-
-    fi["Accrued Interest"] = fi.apply(_accrued, axis=1)
+    # Annual interest = face value × coupon (one full year's coupon income).
+    fi["Annual Interest"] = fi["Quantity"] * fi["Coupon"]
 
     # ── Summary metrics ──
     total_principal = fi["Quantity"].sum()
-    total_accrued   = fi["Accrued Interest"].sum()
+    total_annual    = fi["Annual Interest"].sum()
     m1, m2, m3 = st.columns(3)
     m1.metric("Securities", len(fi))
     m2.metric("Total Principal", fc(total_principal))
-    m3.metric("Total Interest Earned", fc(total_accrued))
+    m3.metric("Total Interest Earned", fc(total_annual))
 
     st.markdown("---")
 
-    # ── Detail table (Excel columns + Accrued Interest) ──
+    # ── Detail table (Excel columns + Annual Interest) ──
     fi_display = fi.copy()
     fi_display["Acquisition Date"] = fi_display["Acquisition Date"].dt.date
     fi_display["Maturity Date"]    = fi_display["Maturity Date"].dt.date
@@ -1061,7 +1053,7 @@ if st.session_state.page == "fixedincome":
         "Quantity":         st.column_config.NumberColumn("Quantity", format="%,.2f"),
         "Coupon":           st.column_config.NumberColumn("Coupon",   format="%.3f%%"),
         "YTM":              st.column_config.NumberColumn("YTM",      format="%.3f%%"),
-        "Accrued Interest": st.column_config.NumberColumn("Accrued Interest", format="%,.2f"),
+        "Annual Interest":  st.column_config.NumberColumn("Annual Interest", format="%,.2f"),
         "Acquisition Date": st.column_config.DateColumn("Acquisition Date", format="MM/DD/YYYY"),
         "Maturity Date":    st.column_config.DateColumn("Maturity Date", format="MM/DD/YYYY"),
     }
