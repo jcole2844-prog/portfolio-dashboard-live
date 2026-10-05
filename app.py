@@ -6,6 +6,7 @@ Refreshes automatically every 60 seconds.
 import altair as alt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 from datetime import datetime, date, time as dtime, timedelta
@@ -67,33 +68,63 @@ if not _editing:
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Tighten metric cards */
-[data-testid="metric-container"] {
-    background: #1a1a2e;
-    border: 1px solid #2d2d4e;
-    border-radius: 8px;
-    padding: 8px 14px 8px 14px;
+/* ── Light theme design tokens ── */
+:root{
+    --surface:#ffffff; --surface-2:#f7f9fc; --border:#e6eaf1;
+    --fg:#0f1b2d; --muted:#64748b; --faint:#94a3b8; --accent:#4f46e5;
+    --pos:#15a65b; --pos-bg:#e4f6ec; --neg:#e11d48; --neg-bg:#fdeaee;
+    --shadow:0 1px 2px rgba(16,30,54,.04), 0 6px 18px rgba(16,30,54,.06);
 }
-[data-testid="stMetricValue"] { font-size: 1.1rem; }
-[data-testid="stMetricLabel"] { font-size: 0.75rem; color: #aaa; }
+
+/* Metric cards → white tiles */
+[data-testid="stMetric"], [data-testid="metric-container"] {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 16px;
+    box-shadow: var(--shadow);
+}
+[data-testid="stMetricValue"] { font-size: 1.15rem; font-weight: 800;
+    letter-spacing:-.02em; color: var(--fg); font-variant-numeric: tabular-nums; }
+[data-testid="stMetricLabel"] { font-size: 0.68rem; font-weight:700;
+    letter-spacing:.04em; text-transform:uppercase; color: var(--muted); }
+
+/* Bordered containers (hero cards) */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 16px !important; box-shadow: var(--shadow);
+}
+
+/* Hero total card */
+.hero-total .hlabel{font-size:.72rem;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);}
+.hero-total .hbig{font-size:2.3rem;font-weight:800;letter-spacing:-.025em;
+    line-height:1.05;margin:.25rem 0;color:var(--fg);font-variant-numeric:tabular-nums;}
+.hero-total .hsub{color:var(--muted);font-size:.85rem;font-weight:500;}
+.hero-chip{display:inline-block;margin-top:12px;font-weight:700;font-size:.9rem;
+    padding:6px 12px;border-radius:999px;}
+.hero-chip.pos{background:var(--pos-bg);color:var(--pos);}
+.hero-chip.neg{background:var(--neg-bg);color:var(--neg);}
+.wheel-cap{text-align:center;font-size:.8rem;font-weight:600;color:var(--muted);
+    margin-top:2px;}
+.wheel-cap b{color:var(--fg);}
 
 /* Scrolling ticker banners */
-.ticker-bar { display:flex; align-items:center; background:#1a1a2e;
-    border:1px solid #2d2d4e; border-radius:8px; overflow:hidden;
-    margin-bottom:6px; }
+.ticker-bar { display:flex; align-items:center; background:var(--surface);
+    border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    margin-bottom:6px; box-shadow:var(--shadow); }
 .ticker-label { flex:0 0 auto; padding:6px 12px; font-size:0.72rem;
-    font-weight:700; letter-spacing:0.5px; color:#0b0b14; white-space:nowrap; }
+    font-weight:700; letter-spacing:0.5px; color:#ffffff; white-space:nowrap; }
 .ticker-track { flex:1 1 auto; overflow:hidden; }
 .ticker-move { display:inline-block; white-space:nowrap; padding-left:100%;
     animation: ticker-scroll 40s linear infinite; font-size:0.9rem;
-    font-weight:600; }
+    font-weight:600; color:var(--fg); }
 .ticker-move:hover { animation-play-state: paused; }
 @keyframes ticker-scroll { 0% { transform: translateX(0); }
     100% { transform: translateX(-100%); } }
 
 /* Flag columns */
-.flag-red  { color: #ff4b4b; font-weight: bold; font-size: 1.1rem; }
-.flag-green { color: #00d488; font-weight: bold; font-size: 1.1rem; }
+.flag-red  { color: var(--neg); font-weight: bold; font-size: 1.1rem; }
+.flag-green { color: var(--pos); font-weight: bold; font-size: 1.1rem; }
 
 /* Subheader spacing */
 h3 { margin-top: 0.4rem !important; margin-bottom: 0.2rem !important; }
@@ -156,6 +187,56 @@ def _num(v):
         return 0.0 if pd.isna(f) else f
     except (TypeError, ValueError):
         return 0.0
+
+# ── Summary wheels (Plotly) ───────────────────────────────────────────────────
+_WHEEL_FG   = "#0f1b2d"
+_WHEEL_MUTE = "#94a3b8"
+
+def allocation_donut(equities, fixed, cash):
+    """Donut of portfolio allocation (Equities / Fixed Income / Cash)."""
+    total = equities + fixed + cash
+    center = f"${total/1e6:,.2f}M" if total >= 1e6 else f"${total:,.0f}"
+    fig = go.Figure(go.Pie(
+        labels=["Equities", "Fixed Income", "Cash"],
+        values=[equities, fixed, cash],
+        hole=0.64, sort=False, direction="clockwise",
+        marker=dict(colors=["#4f46e5", "#0ea5a4", "#f59e0b"],
+                    line=dict(color="#ffffff", width=2)),
+        textinfo="percent", textfont=dict(size=12, color="#ffffff"),
+        hovertemplate="%{label}: $%{value:,.0f} (%{percent})<extra></extra>",
+    ))
+    fig.update_layout(
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="top", y=-0.02, x=0.5, xanchor="center",
+                    font=dict(size=11, color=_WHEEL_FG)),
+        margin=dict(t=6, b=6, l=6, r=6), height=236,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        annotations=[dict(text=f"<b>{center}</b><br><span style='font-size:10px;color:"
+                          f"{_WHEEL_MUTE}'>ALLOCATION</span>",
+                          x=0.5, y=0.5, showarrow=False,
+                          font=dict(size=17, color=_WHEEL_FG))],
+    )
+    return fig
+
+def return_gauge(pct):
+    """Semicircle gauge of unrealized return %."""
+    hi = max(50.0, (round(pct / 10) + 1) * 10) if pct > 0 else 50.0
+    color = "#15a65b" if pct >= 0 else "#e11d48"
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number", value=pct,
+        number={"suffix": "%", "font": {"size": 30, "color": _WHEEL_FG}},
+        gauge={
+            "shape": "angular",
+            "axis": {"range": [0, hi], "tickwidth": 1, "tickcolor": _WHEEL_MUTE,
+                     "tickfont": {"size": 9, "color": _WHEEL_MUTE}},
+            "bar": {"color": color, "thickness": 0.32},
+            "bgcolor": "#f1f3f8", "borderwidth": 0,
+        },
+    ))
+    fig.update_layout(margin=dict(t=10, b=0, l=18, r=18), height=200,
+                      paper_bgcolor="rgba(0,0,0,0)",
+                      font=dict(color=_WHEEL_FG))
+    return fig
 
 def diff_positions(old_map, new_map, source):
     """Compare {key: (qty, cost, name)} dicts and return change-log entries for
@@ -242,12 +323,12 @@ def _label_fg(hexbg):
 def earnings_banner(label, items, label_bg="#1f9bff"):
     """Scrolling marquee banner of upcoming earnings (Ticker + date)."""
     if items:
-        parts = [f'<span style="color:#fff;">{it["ticker"]}</span> '
-                 f'<span style="color:#9fd0ff;">{it["date"].strftime("%m/%d")}</span>'
+        parts = [f'<span style="color:#0f1b2d;font-weight:700;">{it["ticker"]}</span> '
+                 f'<span style="color:#2563eb;">{it["date"].strftime("%m/%d")}</span>'
                  for it in items]
         content = ' &nbsp;&nbsp;•&nbsp;&nbsp; '.join(parts)
     else:
-        content = '<span style="color:#888;">no earnings in the next 10 business days</span>'
+        content = '<span style="color:#94a3b8;">no earnings in the next 10 business days</span>'
     st.markdown(
         f'<div class="ticker-bar">'
         f'<div class="ticker-label" style="background:{label_bg};color:{_label_fg(label_bg)};">{label}</div>'
@@ -256,15 +337,15 @@ def earnings_banner(label, items, label_bg="#1f9bff"):
         unsafe_allow_html=True,
     )
 
-def ticker_banner(label, items, label_bg="#ff4b4b"):
+def ticker_banner(label, items, label_bg="#e11d48"):
     """Render a scrolling marquee banner (Ticker + price only)."""
     if items:
-        parts = [f'<span style="color:#fff;">{it["ticker"]}</span> '
-                 f'<span style="color:#ffd166;">{it["price"]:,.2f}</span>'
+        parts = [f'<span style="color:#0f1b2d;font-weight:700;">{it["ticker"]}</span> '
+                 f'<span style="color:#475569;">{it["price"]:,.2f}</span>'
                  for it in items]
         content = ' &nbsp;&nbsp;•&nbsp;&nbsp; '.join(parts)
     else:
-        content = '<span style="color:#888;">none within 10% of the 52-week low</span>'
+        content = '<span style="color:#94a3b8;">none within 10% of the 52-week low</span>'
     st.markdown(
         f'<div class="ticker-bar">'
         f'<div class="ticker-label" style="background:{label_bg};color:{_label_fg(label_bg)};">{label}</div>'
@@ -503,7 +584,7 @@ def _color_pct(v):
     """Return HTML-colored percentage string."""
     if _na(v):
         return "—"
-    color = "#00d488" if v >= 0 else "#ff4b4b"
+    color = "#15a65b" if v >= 0 else "#e11d48"
     return f'<span style="color:{color}">{fp(v)}</span>'
 
 def _movers_display(df: pd.DataFrame, pct_col: str, price_col: str = "Price") -> pd.DataFrame:
@@ -775,7 +856,7 @@ if st.session_state.page == "holdings":
     def _sign_color(v):
         if pd.isna(v):
             return ""
-        return "color: #00d488" if v >= 0 else "color: #ff4b4b"
+        return "color: #15a65b" if v >= 0 else "color: #e11d48"
 
     gain_cols = ["Ext. Hrs Chg $", "Unr Gain $", "Unr Gain %", "Day Gain $", "Day Gain %"]
     styled_detail = detail_df.style.map(_sign_color, subset=gain_cols)
@@ -928,7 +1009,7 @@ if st.session_state.page == "watchlist":
     def _wl_sign_color(v):
         if pd.isna(v):
             return ""
-        return "color: #00d488" if v >= 0 else "color: #ff4b4b"
+        return "color: #15a65b" if v >= 0 else "color: #e11d48"
 
     wl_styled = wl_df.style.map(_wl_sign_color,
                                 subset=["Ext. Hrs Chg $", "Chg $", "Chg %"])
@@ -1112,7 +1193,7 @@ if st.session_state.page == "fixedincome":
             y=alt.Y("Quantity:Q", title="Principal Maturing ($)"),
         )
         bars = base.mark_bar(color="#0f9d8f", size=28)
-        text = base.mark_text(dy=-8, color="#ffffff", fontWeight="bold").encode(
+        text = base.mark_text(dy=-8, color="#0f1b2d", fontWeight="bold").encode(
             text=alt.Text("AmtLabel:N")
         )
         st.altair_chart((bars + text).properties(height=380), use_container_width=True)
@@ -1154,7 +1235,7 @@ if st.session_state.page == "changelog":
         def _sign_color(v):
             if pd.isna(v):
                 return ""
-            return "color: #00d488" if v >= 0 else "color: #ff4b4b"
+            return "color: #15a65b" if v >= 0 else "color: #e11d48"
 
         styled = sub.style.map(_sign_color, subset=["Qty Change"])
         st.dataframe(
@@ -1180,10 +1261,10 @@ if st.session_state.page == "changelog":
 # Header row
 mkt_status, mkt_countdown, et_time, ct_time = market_clock()
 if mkt_status == "open":
-    _clock_color = "#ff4b4b"                 # red while open
+    _clock_color = "#e11d48"                 # red while open
     _clock_label = "Countdown to Market Close"
 else:
-    _clock_color = "#00d488"                 # green while closed
+    _clock_color = "#15a65b"                 # green while closed
     _clock_label = "Countdown to Market Open"
 
 def _mini_stack(title, items, suppress=False, suppress_text="Market Open"):
@@ -1194,25 +1275,25 @@ def _mini_stack(title, items, suppress=False, suppress_text="Market Open"):
     for it in items:
         v, p, url = it["value"], it["change_pct"], it.get("url")
         nm = it["name"]
-        name_html = (f'<a href="{url}" target="_blank" style="color:#aaa;'
+        name_html = (f'<a href="{url}" target="_blank" style="color:#64748b;'
                      f'text-decoration:none;white-space:nowrap;">{nm}</a>' if url else
-                     f'<span style="color:#aaa;white-space:nowrap;">{nm}</span>')
+                     f'<span style="color:#64748b;white-space:nowrap;">{nm}</span>')
         if suppress:
-            right = f'<span style="color:#777;white-space:nowrap;">{suppress_text}</span>'
+            right = f'<span style="color:#94a3b8;white-space:nowrap;">{suppress_text}</span>'
         elif v is None or p is None:
-            right = '<span style="color:#777;">—</span>'
+            right = '<span style="color:#94a3b8;">—</span>'
         else:
-            c = "#00d488" if p >= 0 else "#ff4b4b"
+            c = "#15a65b" if p >= 0 else "#e11d48"
             ar = "▲" if p >= 0 else "▼"
             dec = 2 if abs(v) < 1000 else 0
             right = (f'<span style="color:{c};font-weight:600;white-space:nowrap;">'
                      f'{v:,.{dec}f} {ar}{abs(p):.2f}%</span>')
         rows += (f'<div style="display:flex;justify-content:space-between;gap:10px;'
                  f'font-size:0.74rem;line-height:1.65;">{name_html}{right}</div>')
-    # Only the box title (FUTURES / COMMODITIES) is enlarged and yellow.
-    return (f'<div style="background:#1a1a2e;border:1px solid #2d2d4e;border-radius:8px;'
-            f'padding:6px 10px;">'
-            f'<div style="font-size:0.95rem;font-weight:700;color:#ffd400;'
+    # Box title (FUTURES / COMMODITIES) enlarged, in amber/gold.
+    return (f'<div style="background:#ffffff;border:1px solid #e6eaf1;border-radius:12px;'
+            f'padding:8px 12px;box-shadow:0 1px 2px rgba(16,30,54,.04),0 6px 18px rgba(16,30,54,.06);">'
+            f'<div style="font-size:0.95rem;font-weight:800;color:#b45309;'
             f'letter-spacing:0.3px;margin-bottom:3px;white-space:nowrap;">{title}</div>{rows}</div>')
 
 
@@ -1232,7 +1313,7 @@ with hdr_clock:
         f"""<div style="text-align:center;line-height:1.0;padding-top:2px;">
              <div style="font-size:3.0rem;font-weight:800;color:{_clock_color};
                   font-variant-numeric:tabular-nums;white-space:nowrap;">{mkt_countdown}</div>
-             <div style="font-size:0.8rem;color:#aaa;">{_clock_label}</div></div>""",
+             <div style="font-size:0.8rem;color:#64748b;">{_clock_label}</div></div>""",
         unsafe_allow_html=True,
     )
 with hdr_fut:
@@ -1245,10 +1326,10 @@ with hdr_r:
         f"""<div style="text-align:right;line-height:1.3;">
              <div style="font-size:0.95rem;margin-bottom:3px;">
                  <a href="https://www.cnbc.com" target="_blank"
-                    style="color:#1f9bff;text-decoration:none;font-weight:700;">📰 CNBC.com ↗</a></div>
-             <div style="font-size:0.9rem;color:#ddd;"><b>ET</b> {et_time}</div>
-             <div style="font-size:0.9rem;color:#ddd;"><b>CT</b> {ct_time}</div>
-             <div style="font-size:0.72rem;color:#888;">Auto-refreshes every 60 sec</div></div>""",
+                    style="color:#2563eb;text-decoration:none;font-weight:700;">📰 CNBC.com ↗</a></div>
+             <div style="font-size:0.9rem;color:#334155;"><b>ET</b> {et_time}</div>
+             <div style="font-size:0.9rem;color:#334155;"><b>CT</b> {ct_time}</div>
+             <div style="font-size:0.72rem;color:#94a3b8;">Auto-refreshes every 60 sec</div></div>""",
         unsafe_allow_html=True,
     )
 
@@ -1318,18 +1399,46 @@ if missing_cost:
 
 # Fixed-income principal (face value, excluding accrued interest)
 fixed_inc_total = float(load_fixed_income()["Quantity"].sum())
+cash_total      = get_cash()
+grand_total     = total_value + fixed_inc_total + cash_total
 
-cash_total = get_cash()
-mc1, mc2, mc3, mc4, mc5, mc6, mc7, _mc_sp, mc8 = st.columns(
-    [1, 1, 1, 1, 1, 1, 1, 0.8, 1.3])
-mc1.metric("Holdings",       len(port_tickers))
-mc2.metric("Equities Value", fc(total_value))
-mc3.metric("Cost Basis",     fc(total_cost))
-mc4.metric("Unr Gain $",     fc(total_unr),  delta=fp(total_unr_pct))
-mc5.metric("Today Gain $",   fc(total_day_gain), delta=fp(total_day_gain_pct))
-mc6.metric("Fixed Inc",      fc(fixed_inc_total))
-mc7.metric("Cash",           fc(cash_total))
-mc8.metric("Total Value",    fc(total_value + fixed_inc_total + cash_total))
+# ── Hero row: Total Value · Allocation wheel · Return gauge ──
+_day_cls   = "pos" if total_day_gain >= 0 else "neg"
+_day_arrow = "▲" if total_day_gain >= 0 else "▼"
+hero_l, hero_m, hero_r = st.columns([1.2, 1, 1])
+with hero_l:
+    with st.container(border=True):
+        st.markdown(
+            f"""<div class="hero-total">
+                 <div class="hlabel">Total Portfolio Value</div>
+                 <div class="hbig">{fc(grand_total)}</div>
+                 <div class="hsub">Equities + Fixed Income + Cash</div>
+                 <span class="hero-chip {_day_cls}">{_day_arrow} {fc(abs(total_day_gain))}
+                   · {fp(total_day_gain_pct)} today</span>
+                 </div>""",
+            unsafe_allow_html=True,
+        )
+with hero_m:
+    with st.container(border=True):
+        st.plotly_chart(allocation_donut(total_value, fixed_inc_total, cash_total),
+                        use_container_width=True, config={"displayModeBar": False})
+with hero_r:
+    with st.container(border=True):
+        st.plotly_chart(return_gauge(total_unr_pct),
+                        use_container_width=True, config={"displayModeBar": False})
+        st.markdown(
+            f'<div class="wheel-cap">Unrealized gain · <b>{fc(total_unr)}</b></div>',
+            unsafe_allow_html=True,
+        )
+
+# ── Stat tiles ──
+t1, t2, t3, t4, t5, t6 = st.columns(6)
+t1.metric("Equities Value", fc(total_value), help=f"{len(port_tickers)} holdings")
+t2.metric("Cost Basis",     fc(total_cost))
+t3.metric("Unrealized Gain", fc(total_unr),  delta=fp(total_unr_pct))
+t4.metric("Today's Gain",   fc(total_day_gain), delta=fp(total_day_gain_pct))
+t5.metric("Fixed Income",   fc(fixed_inc_total))
+t6.metric("Cash",           fc(cash_total))
 
 # ── Index performance bar (Dow / S&P 500 / Nasdaq), green up / red down ────────
 indices = get_index_quotes()
@@ -1342,24 +1451,27 @@ for col, idx in zip(idx_cols, indices):
     if _na(lvl) or _na(pct):
         col.markdown(
             f"""<a href="{url}" target="_blank" style="text-decoration:none;">
-                 <div style="background:#1a1a2e;border:1px solid #2d2d4e;border-radius:8px;
-                 padding:10px 14px;text-align:center;cursor:pointer;">
-                 <div style="font-size:0.8rem;color:#aaa;">{idx['name']} ↗</div>
-                 <div style="font-size:1.2rem;font-weight:700;color:#888;">—</div>
-                 <div style="font-size:0.85rem;color:#888;">market closed</div></div></a>""",
+                 <div style="background:#ffffff;border:1px solid #e6eaf1;border-radius:14px;
+                 padding:12px 14px;text-align:center;cursor:pointer;
+                 box-shadow:0 1px 2px rgba(16,30,54,.04),0 6px 18px rgba(16,30,54,.06);">
+                 <div style="font-size:0.78rem;font-weight:600;color:#64748b;">{idx['name']} ↗</div>
+                 <div style="font-size:1.2rem;font-weight:700;color:#94a3b8;">—</div>
+                 <div style="font-size:0.85rem;color:#94a3b8;">market closed</div></div></a>""",
             unsafe_allow_html=True,
         )
         continue
     up = pct >= 0
-    color = "#00d488" if up else "#ff4b4b"
+    color = "#15a65b" if up else "#e11d48"
     arrow = "▲" if up else "▼"
     col.markdown(
         f"""<a href="{url}" target="_blank" style="text-decoration:none;">
-             <div style="background:#1a1a2e;border:1px solid {color}55;border-radius:8px;
-             padding:10px 14px;text-align:center;cursor:pointer;">
-             <div style="font-size:0.8rem;color:#aaa;">{idx['name']} ↗</div>
-             <div style="font-size:1.4rem;font-weight:700;color:{color};">{lvl:,.2f}</div>
-             <div style="font-size:0.9rem;font-weight:600;color:{color};">
+             <div style="background:#ffffff;border:1px solid #e6eaf1;border-radius:14px;
+             padding:12px 14px;text-align:center;cursor:pointer;
+             box-shadow:0 1px 2px rgba(16,30,54,.04),0 6px 18px rgba(16,30,54,.06);">
+             <div style="font-size:0.78rem;font-weight:600;color:#64748b;">{idx['name']} ↗</div>
+             <div style="font-size:1.45rem;font-weight:800;color:{color};
+                  letter-spacing:-.01em;">{lvl:,.2f}</div>
+             <div style="font-size:0.9rem;font-weight:700;color:{color};">
                  {arrow} {fn(abs(chg))} ({fp(pct)})</div></div></a>""",
         unsafe_allow_html=True,
     )
@@ -1370,9 +1482,9 @@ st.markdown("---")
 earnings_banner("📅 UPCOMING EARNINGS",
                 upcoming_earnings(port_tickers, business_days=10), label_bg="#c8a2e8")
 ticker_banner("🔺 HOLDINGS NEAR 52W HIGH",
-              near_52w_high(port_tickers, threshold=10.0), label_bg="#00d488")
+              near_52w_high(port_tickers, threshold=10.0), label_bg="#15a65b")
 ticker_banner("🔻 HOLDINGS NEAR 52W LOW",
-              near_52w_low(port_tickers, threshold=10.0), label_bg="#ff4b4b")
+              near_52w_low(port_tickers, threshold=10.0), label_bg="#e11d48")
 ticker_banner("🔻 WATCHLIST NEAR 52W LOW",
               near_52w_low(get_watchlist(), threshold=10.0), label_bg="#1f6feb")
 
