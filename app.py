@@ -1450,13 +1450,12 @@ with hero_l:
         )
 with hero_m:
     with st.container(border=True):
-        _segs = [("Stocks", stocks_value, "#4f46e5")]
-        for _ft in FUND_TICKERS:
-            _fv = funds_value.get(_ft, 0.0)
-            if _fv > 0:
-                _segs.append((_ft, _fv, _FUND_COLORS.get(_ft, "#8b5cf6")))
-        _segs.append(("Fixed Income", fixed_inc_total, "#0ea5a4"))
-        _segs.append(("Cash", cash_total, "#f59e0b"))
+        _segs = [
+            ("Equities",     stocks_value,              "#4f46e5"),
+            ("Funds",        sum(funds_value.values()), "#7c3aed"),
+            ("Fixed Income", fixed_inc_total,           "#0ea5a4"),
+            ("Cash",         cash_total,                "#f59e0b"),
+        ]
         st.plotly_chart(allocation_donut(_segs),
                         width='stretch', config={"displayModeBar": False})
 with hero_r:
@@ -1473,7 +1472,7 @@ _held_funds  = [ft for ft in FUND_TICKERS if funds_value.get(ft, 0.0) > 0]
 _funds_total = sum(funds_value.values())
 _stocks_n    = len(port_tickers) - len(_held_funds)
 t1, t2, t3, t4, t5, t6, t7 = st.columns(7)
-t1.metric("Stocks",         fc(stocks_value), help=f"{_stocks_n} individual stocks")
+t1.metric("Equities",       fc(stocks_value), help=f"{_stocks_n} individual stocks")
 t2.metric("Funds",          fc(_funds_total),
           help="Mutual funds & ETF: " + (", ".join(_held_funds) if _held_funds else "none"))
 t3.metric("Cost Basis",     fc(total_cost))
