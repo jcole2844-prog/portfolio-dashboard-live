@@ -84,11 +84,15 @@ st.markdown("""
     border-radius: 14px;
     padding: 12px 16px;
     box-shadow: var(--shadow);
+    text-align: center;
 }
 [data-testid="stMetricValue"] { font-size: 1.15rem; font-weight: 800;
-    letter-spacing:-.02em; color: var(--fg); font-variant-numeric: tabular-nums; }
+    letter-spacing:-.02em; color: var(--fg); font-variant-numeric: tabular-nums;
+    justify-content: center; }
 [data-testid="stMetricLabel"] { font-size: 0.68rem; font-weight:700;
-    letter-spacing:.04em; text-transform:uppercase; color: var(--muted); }
+    letter-spacing:.04em; text-transform:uppercase; color: var(--muted);
+    justify-content: center; }
+[data-testid="stMetricDelta"] { justify-content: center; }
 
 /* Bordered containers (hero cards) */
 [data-testid="stVerticalBlockBorderWrapper"] {
@@ -96,6 +100,7 @@ st.markdown("""
 }
 
 /* Hero total card */
+.hero-total{text-align:center;}
 .hero-total .hlabel{font-size:.72rem;font-weight:700;letter-spacing:.08em;
     text-transform:uppercase;color:var(--muted);}
 .hero-total .hbig{font-size:2.3rem;font-weight:800;letter-spacing:-.025em;
