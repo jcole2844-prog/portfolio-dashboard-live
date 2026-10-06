@@ -193,23 +193,26 @@ def _num(v):
 _WHEEL_FG   = "#0f1b2d"
 _WHEEL_MUTE = "#94a3b8"
 
-def allocation_donut(equities, fixed, cash):
-    """Donut of portfolio allocation (Equities / Fixed Income / Cash)."""
-    total = equities + fixed + cash
-    center = f"${total/1e6:,.2f}M" if total >= 1e6 else f"${total:,.0f}"
+def allocation_donut(segments):
+    """Donut of portfolio allocation.
+    `segments` is a list of (label, value, color); zero/empty slices are dropped."""
+    segments = [(l, float(v), c) for (l, v, c) in segments if v and float(v) > 0]
+    labels  = [s[0] for s in segments]
+    values  = [s[1] for s in segments]
+    colors  = [s[2] for s in segments]
+    total   = sum(values)
+    center  = f"${total/1e6:,.2f}M" if total >= 1e6 else f"${total:,.0f}"
     fig = go.Figure(go.Pie(
-        labels=["Equities", "Fixed Income", "Cash"],
-        values=[equities, fixed, cash],
+        labels=labels, values=values,
         hole=0.64, sort=False, direction="clockwise",
-        marker=dict(colors=["#4f46e5", "#0ea5a4", "#f59e0b"],
-                    line=dict(color="#ffffff", width=2)),
-        textinfo="percent", textfont=dict(size=12, color="#ffffff"),
+        marker=dict(colors=colors, line=dict(color="#ffffff", width=2)),
+        textinfo="percent", textfont=dict(size=11, color="#ffffff"),
         hovertemplate="%{label}: $%{value:,.0f} (%{percent})<extra></extra>",
     ))
     fig.update_layout(
         showlegend=True,
         legend=dict(orientation="h", yanchor="top", y=-0.02, x=0.5, xanchor="center",
-                    font=dict(size=11, color=_WHEEL_FG)),
+                    font=dict(size=10, color=_WHEEL_FG)),
         margin=dict(t=6, b=6, l=6, r=6), height=236,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         annotations=[dict(text=f"<b>{center}</b><br><span style='font-size:10px;color:"
@@ -1358,10 +1361,18 @@ with st.spinner("Loading portfolio…"):
     recs   = get_recommendations(port_tickers)
 
 # ── Compute portfolio totals ──────────────────────────────────────────────────
-total_cost  = 0.0
-total_value = 0.0
-prev_value  = 0.0
-port_rows   = []
+# Mutual funds / ETF that are broken out separately from individual stocks in the
+# allocation wheel. The "Stocks" slice reflects everything NOT in this set.
+FUND_TICKERS = ("VFIAX", "VVIAX", "VTTHX", "VTTHS", "IBB")
+_FUND_COLORS = {"VFIAX": "#7c3aed", "VVIAX": "#db2777", "VTTHX": "#2563eb",
+                "VTTHS": "#2563eb", "IBB": "#65a30d"}
+
+total_cost   = 0.0
+total_value  = 0.0
+prev_value   = 0.0
+stocks_value = 0.0            # market value of individual stocks only
+funds_value  = {}             # {fund ticker: market value}
+port_rows    = []
 
 missing_cost = []
 for _, row in portfolio.iterrows():
@@ -1379,7 +1390,12 @@ for _, row in portfolio.iterrows():
 
     total_cost += tot_cost
     if cur  is not None:
-        total_value += cur  * qty
+        mv = cur * qty
+        total_value += mv
+        if t in FUND_TICKERS:
+            funds_value[t] = funds_value.get(t, 0.0) + mv
+        else:
+            stocks_value += mv
     if prev is not None:
         prev_value  += prev * qty
 
@@ -1434,7 +1450,14 @@ with hero_l:
         )
 with hero_m:
     with st.container(border=True):
-        st.plotly_chart(allocation_donut(total_value, fixed_inc_total, cash_total),
+        _segs = [("Stocks", stocks_value, "#4f46e5")]
+        for _ft in FUND_TICKERS:
+            _fv = funds_value.get(_ft, 0.0)
+            if _fv > 0:
+                _segs.append((_ft, _fv, _FUND_COLORS.get(_ft, "#8b5cf6")))
+        _segs.append(("Fixed Income", fixed_inc_total, "#0ea5a4"))
+        _segs.append(("Cash", cash_total, "#f59e0b"))
+        st.plotly_chart(allocation_donut(_segs),
                         width='stretch', config={"displayModeBar": False})
 with hero_r:
     with st.container(border=True):
@@ -1446,13 +1469,18 @@ with hero_r:
         )
 
 # ── Stat tiles ──
-t1, t2, t3, t4, t5, t6 = st.columns(6)
-t1.metric("Equities Value", fc(total_value), help=f"{len(port_tickers)} holdings")
-t2.metric("Cost Basis",     fc(total_cost))
-t3.metric("Unrealized Gain", fc(total_unr),  delta=fp(total_unr_pct))
-t4.metric("Today's Gain",   fc(total_day_gain), delta=fp(total_day_gain_pct))
-t5.metric("Fixed Income",   fc(fixed_inc_total))
-t6.metric("Cash",           fc(cash_total))
+_held_funds  = [ft for ft in FUND_TICKERS if funds_value.get(ft, 0.0) > 0]
+_funds_total = sum(funds_value.values())
+_stocks_n    = len(port_tickers) - len(_held_funds)
+t1, t2, t3, t4, t5, t6, t7 = st.columns(7)
+t1.metric("Stocks",         fc(stocks_value), help=f"{_stocks_n} individual stocks")
+t2.metric("Funds",          fc(_funds_total),
+          help="Mutual funds & ETF: " + (", ".join(_held_funds) if _held_funds else "none"))
+t3.metric("Cost Basis",     fc(total_cost))
+t4.metric("Unrealized Gain", fc(total_unr),  delta=fp(total_unr_pct))
+t5.metric("Today's Gain",   fc(total_day_gain), delta=fp(total_day_gain_pct))
+t6.metric("Fixed Income",   fc(fixed_inc_total))
+t7.metric("Cash",           fc(cash_total))
 
 # ── Index performance bar (Dow / S&P 500 / Nasdaq), green up / red down ────────
 indices = get_index_quotes()
