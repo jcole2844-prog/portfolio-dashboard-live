@@ -88,11 +88,18 @@ st.markdown("""
 }
 [data-testid="stMetricValue"] { font-size: 1.15rem; font-weight: 800;
     letter-spacing:-.02em; color: var(--fg); font-variant-numeric: tabular-nums;
-    justify-content: center; }
+    justify-content: center !important; text-align: center; }
+/* Label is a 2-col grid (text + reserved help-icon column); flex collapses the
+   phantom column so the title truly centers in the card. */
 [data-testid="stMetricLabel"] { font-size: 0.68rem; font-weight:700;
     letter-spacing:.04em; text-transform:uppercase; color: var(--muted);
-    justify-content: center; }
-[data-testid="stMetricDelta"] { justify-content: center; }
+    display: flex !important; justify-content: center !important;
+    align-items: center; text-align: center; width: 100%; position: relative; }
+/* Take the help (ℹ) icon out of flow so the title text centers on its own. */
+[data-testid="stMetricLabel"] > span {
+    position: absolute; right: 2px; top: 50%; transform: translateY(-50%); }
+[data-testid="stMetricDelta"] { justify-content: center !important;
+    width: 100%; text-align: center; }
 
 /* Bordered containers (hero cards) */
 [data-testid="stVerticalBlockBorderWrapper"] {
