@@ -759,6 +759,33 @@ def _norm_div_yield(raw):
     return float(raw)
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_names(tickers: tuple) -> dict:
+    """
+    Map each ticker to its company name.
+
+    Yahoo's `.info` endpoint (used by get_fundamentals) is aggressively rate
+    limited and frequently returns nothing, which previously left the Name
+    column showing the ticker symbol. The v8 chart endpoint carries longName /
+    shortName in its metadata and is NOT rate limited, so we use it as the
+    reliable source. Names rarely change, so this is cached for a day.
+    """
+    def _one(t):
+        try:
+            r = requests.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{t}",
+                params={"range": "1d", "interval": "1d"},
+                headers=_HTTP_HEADERS, timeout=10,
+            )
+            m = (r.json().get("chart", {}).get("result") or [{}])[0].get("meta", {})
+            return m.get("longName") or m.get("shortName") or t
+        except Exception:
+            return t
+
+    raw = _parallel_map(_one, tickers)
+    return {t: (raw.get(t) or t) for t in tickers}
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_fundamentals(tickers: tuple) -> dict:
     """

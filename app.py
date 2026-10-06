@@ -29,6 +29,7 @@ from data_feed import (
     get_premarket_quotes,
     get_ext_hours_prices,
     get_fundamentals,
+    get_names,
     get_analyst_actions,
     get_recommendations,
     get_technical_signals_batch,
@@ -402,8 +403,8 @@ def add_name_col(df):
     if df.empty or "Ticker" not in df.columns:
         return df
     df = df.copy()
-    f = get_fundamentals(tuple(sorted(set(df["Ticker"]))))
-    names = df["Ticker"].map(lambda t: (f.get(t, {}).get("name") or t))
+    nm = get_names(tuple(sorted(set(df["Ticker"]))))
+    names = df["Ticker"].map(lambda t: (nm.get(t) or t))
     df.insert(df.columns.get_loc("Ticker") + 1, "Name", names)
     return df
 
